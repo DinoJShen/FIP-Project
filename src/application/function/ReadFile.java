@@ -1,47 +1,44 @@
+package application.function;
+
 import java.io.*;
 import java.util.ArrayList;
+import javax.swing.JOptionPane;
 
 public class ReadFile {
     public static int dataStart=0;
-    public static void main(String[] args) {
-        readTif("yoda.tif");
-        readTif("Imgpro.tif");
-        //readTif("lena.tif");
-    }
-    
-    static void readTif(String file){
+    private static String byteOrder,version,file,output;
+    private static int offset,de,dataCount;
+    private static String[][]data=new String[13][4];
+    public ReadFile(String file){
+        this.file=file;
+        for(int i=0;i<data.length;i++){
+            for(int j=0;j<4;j++){
+                data[i][j]="";
+            }
+        }
         try{
             FileInputStream MyInputFile=new FileInputStream(file);
-            PrintWriter out = new PrintWriter(file.substring(0, file.length()-4)+".txt");
-            String output="";
+            output="";
             output+="Filename: "+file+"\n";
-            //System.out.println("Filename: "+file);
-            output+="-----------------------------Header Info-----------------------------\n";
-            //System.out.println("-----------------------------Header Info-----------------------------");
-            String byteOrder=String.format("%02X", (0xFF & MyInputFile.read()));
+            output+="---------------------------------------------------------Header Info----------------------------------------------------------\n";
+            byteOrder=String.format("%02X", (0xFF & MyInputFile.read()));
             byteOrder+=String.format("%02X", (0xFF & MyInputFile.read()));
-            String version=readByte(MyInputFile,2,byteOrder);
-            int offset=Integer.parseInt(readByte(MyInputFile,4,byteOrder),16);
-            int de=Integer.parseInt(readByte(MyInputFile,2,byteOrder),16);
-            output+="Byte Order:\t\t\t"+byteOrder+"\n";
-            //System.out.println("Byte Order:\t\t\t"+byteOrder);
+            version=readByte(MyInputFile,2,byteOrder);
+            offset=Integer.parseInt(readByte(MyInputFile,4,byteOrder),16);
+            de=Integer.parseInt(readByte(MyInputFile,2,byteOrder),16);
+            output+="Byte Order:\t\t"+byteOrder+"\n";
             output+="Version:\t\t\t"+version+"\n";
-            //System.out.println("Version:\t\t\t"+version);
-            output+="Offset:\t\t\t\t"+offset+"\n";
-            //System.out.println("Offset:\t\t\t\t"+offset);
+            output+="Offset:\t\t\t"+offset+"\n";
             output+="Number of Directory Entry:\t"+de+"\n";
-            //System.out.println("Number of Directory Entry:\t"+de);
-            output+="-----------------------------Data  Entry-----------------------------\n";
-            //System.out.println("-----------------------------Data  Entry-----------------------------");
-            output+="\tTag\t\t\t\tType\t\tCount\tValue\n";
-            //System.out.println("\tTag\t\t\t\tType\t\tCount\tValue");
-            output+="---------------------------------------------------------------------\n";
-            //System.out.println("---------------------------------------------------------------------");
+            output+="----------------------------------------------------------Data  Entry----------------------------------------------------------\n";
+            output+="\tTag\t\t\tType\t\tCount\tValue\n";
+            output+="-------------------------------------------------------------------------------------------------------------------------------------\n";
+            dataCount=0;
             for(int i=0;i<de;i++){
                 String ReadData=readData(MyInputFile,byteOrder);
                 if(ReadData.isEmpty()==false){
                     output+=ReadData+"\n";
-                    //System.out.println(ReadData);
+                    dataCount++;
                 }
             }
             MyInputFile.close();
@@ -49,29 +46,33 @@ public class ReadFile {
             MyInputFile.skip(dataStart);
             int value;
             int i=0;
-            output+="\n-----------------------------Image  Data-----------------------------\n\t\t";
-            //System.out.print("\n-----------------------------Image  Data-----------------------------\n\t\t");
+            output+="\n---------------------------------------------------------Image  Data----------------------------------------------------------\n";
             while((value=MyInputFile.read())!=-1){
                 output+=String.format("%02X", (0xFF & value));
-                //System.out.print(String.format("%02X", (0xFF & value)));
                 if(i>=15){
-                    output+="\n\t\t";
-                    //System.out.print("\n\t\t");
+                    output+="\n";
                     i=0;
                 }else{
                     if(i%2!=0){
-                        output+=" ";
-                        //System.out.print(" ");
+                        output+="\t";
                     }
                     i++;
                 }
             }
-            System.out.println(output);
-            System.out.println("\n");
-            out.print(output);
             MyInputFile.close();
         }catch(IOException ex){
-            System.out.println("file input error!");
+            JOptionPane.showMessageDialog(null, "The file input error!","Error", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+    
+    public static void generateData(String path){
+        try{
+            PrintWriter out = new PrintWriter(path.substring(0, path.length()-4)+".txt");
+            out.print(output);
+            ProcessBuilder pb = new ProcessBuilder("Notepad.exe", path.substring(0, path.length()-4)+".txt");
+            pb.start();
+        }catch(IOException ex){
+            JOptionPane.showMessageDialog(null, "The file output error!","Error", JOptionPane.WARNING_MESSAGE);
         }
     }
     
@@ -97,7 +98,11 @@ public class ReadFile {
             dataStart=valueInt;
         }
         String ReadTag=readTag(tag,tagInt);
-        if(ReadTag.equals("\t\t\t")==false){
+        if(ReadTag.equals("\t\t")==false){
+            data[dataCount][0]=ReadTag;
+            data[dataCount][1]=readType(type,typeInt);
+            data[dataCount][2]=String.valueOf(lengthInt);
+            data[dataCount][3]=String.valueOf(valueInt);
             return ReadTag+readType(type,typeInt)+"\t"+lengthInt+"\t"+valueInt;
         }else{
             return "";
@@ -177,8 +182,10 @@ public class ReadFile {
         }
         if(tagInt==262){
             tag+="\t";
-        }else{
+        }else if(tagInt==255||tagInt==273){
             tag+="\t\t\t";
+        }else{
+            tag+="\t\t";
         }
         return tag;
     }
@@ -196,7 +203,28 @@ public class ReadFile {
         }else if(typeInt==5){
             type+=" (RATIONAL)";
         }
+        if(typeInt==4){
+            type+="\t";
+        }
         return type;
+    }
+    
+    public String headerInfo(int i){
+        if(i==0){
+            return byteOrder;
+        }else if(i==1){
+            return version;
+        }else if(i==2){
+            return String.valueOf(offset);
+        }else if(i==3){
+            return String.valueOf(de);
+        }else{
+            return "";
+        }
+    }
+    
+    public String[][]data(){
+        return data;
     }
     
 }
